@@ -1,114 +1,84 @@
-FROM ubuntu:22.04
-ARG LLVM=15
+FROM ubuntu:20.04
+ENV LLVM 16
 
-# install basics
-RUN apt-get update &&  DEBIAN_FRONTEND=noninteractive apt-get install -y curl sudo wget git less rsync nano openssl ca-certificates make vim
-
-# for nodejs 20
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+RUN echo "# FAU mirrors" > /etc/apt/sources.list \
+ && echo "deb http://ftp.fau.de/ubuntu focal main restricted universe multiverse" >> /etc/apt/sources.list \
+ && echo "deb http://ftp.fau.de/ubuntu focal-updates main restricted universe multiverse" >> /etc/apt/sources.list \
+ && echo "deb http://ftp.fau.de/ubuntu focal-security main restricted universe multiverse" >> /etc/apt/sources.list
 
 # This platform includes dependencies for building docs
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      cmake \
-      g++ \
-      gfortran \
-      llvm-${LLVM}-dev \
-      libclang-${LLVM}-dev \
+RUN apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      equivs \
+      gpg \
+      gpg-agent \
+ && echo "Package: libomp-dev" >> ./libomp-dev \
+ && echo "Section: libdevel" >> ./libomp-dev \
+ && echo "Version: 1:${LLVM}" >> ./libomp-dev \
+ && echo "Depends: libomp-${LLVM}-dev" >> ./libomp-dev \
+ && echo "Description: LLVM OpenMP runtime - dev package" >> ./libomp-dev \
+ && equivs-build ./libomp-dev \
+ && echo "deb http://apt.llvm.org/focal/ llvm-toolchain-focal-${LLVM} main" > /etc/apt/sources.list.d/llvm.list \
+ && curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key > /etc/apt/trusted.gpg.d/llvm.asc \
+ && echo "deb https://apt.kitware.com/ubuntu/ focal main" > /etc/apt/sources.list.d/kitware.list \
+ && curl -fsSl https://apt.kitware.com/keys/kitware-archive-latest.asc > /etc/apt/trusted.gpg.d/kitware.asc \
+ && apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
       clang-${LLVM} \
+      cmake \
+      curl \
+      cython3 \
+      gdb \
+      gfortran \
+      git \
+      hdf5-tools \
+      jupyter-notebook \
+      libboost-dev \
+      libboost-mpi-dev \
       libc++-${LLVM}-dev \
       libc++abi-${LLVM}-dev \
-      hdf5-tools \
-      libmkl-full-dev \ 
-      libopenblas-dev \
-      libboost-dev \
+      libclang-${LLVM}-dev \
+      libeigen3-dev \
       libfftw3-dev \
-      libnfft3-dev \
-      libgfortran5 \
       libgmp-dev \
+      libgsl-dev \
       libhdf5-dev \
-      libhwloc-dev \
-      libevent-dev \
-      libpmi2-0-dev \
-      cython3 \
-      # comment the next 4 lines if you want to build openmpi manually
+      libmkl-full-dev \
+      libmpfr-dev \
+      libnfft3-dev \
+      libomp-${LLVM}-dev \
       libopenmpi-dev \
+      libpython3-dev \
+      libscalapack-openmpi-dev \
       openmpi-bin \
       openmpi-common \
-      openmpi-doc \
-      libfabric-dev \
-      libomp-${LLVM}-dev \
-      nodejs \
+      python3-ase \
       python3-dev \
-      python3-mako \
-      python3-numpy \
-      python3-scipy \
-      python3-matplotlib \
-      python3-pip \
-      python3-sphinx \
       python3-clang-${LLVM} \
-      python3-skimage \ 
-      python3-nbsphinx \
-      python3-notebook \
-      libpython3-dev \
+      python3-mako \
+      python3-matplotlib \
+      python3-mpi4py \
+      python3-numpy \
+      python3-pytest \
+      python3-scipy \
+      python3-skimage \
+      rsync \
+      ./libomp-dev_${LLVM}_all.deb \
       && \
       apt-get autoremove --purge -y && \
       apt-get autoclean -y && \
-      rm -rf /var/cache/apt/* /var/lib/apt/lists/*
-      
-# install openmpi and compile openmpi manually
-# this is to ensure PMI compatibility with cray systems
-# RUN wget -q https://download.open-mpi.org/release/open-mpi/v4.1/openmpi-4.1.5.tar.gz \
-#     && tar xf openmpi-4.1.5.tar.gz \
-#     && cd openmpi-4.1.5 \
-#     && ./configure --prefix=/usr --enable-mpi-cxx --with-libfabric=/usr \
-#         --with-hwloc=/usr --with-hwloc-libdir=/usr/lib/x86_64-linux-gnu \
-#         --with-libevent=/usr --with-libevent-libdir=/usr/lib/x86_64-linux-gnu \
-#         --with-pmi=/usr/include/slurm --with-pmi-libdir=/usr/lib/x86_64-linux-gnu \
-#         CFLAGS="-I/usr/include/slurm" \
-#     && make -j$(nproc) \
-#     && make install \
-#     && ldconfig \
-#     && cd .. \
-#     && rm -rf openmpi-4.1.5.tar.gz openmpi-4.1.5
+      rm -rvf /var/cache/apt/* /var/lib/apt/lists/* ./libomp*
 
-RUN pip3 install --no-cache-dir \
-    mpi4py \
-    cython \
-    decorator \
-    jupyter \
-    ipywidgets \
-    pytest \
-    pandas \
-    shapely \
-    monty \
-    mpi4py \
-    pymatgen \
-    ase \ 
-    Jinja2 \
-    Mako \
-    tornado \
-    zmq \
-    notebook \
-    tk \
-    myst_parser \ 
-    sphinx_rtd_theme  \
-    linkify-it-py \ 
-    Pandoc \
-    # Jupyter lab packages
-    jupyterlab \
-    descartes \
-    ipympl \
-    RISE 
-
-ENV PYTHON_VERSION=3.10 \
-    CC=clang-${LLVM} CXX=clang++-${LLVM} CXXFLAGS="-stdlib=libc++"
-RUN update-alternatives --install /usr/bin/clang clang /usr/bin/clang-${LLVM} 60 --slave /usr/bin/clang++ clang++ /usr/bin/clang++-${LLVM} --slave /usr/bin/clang-cpp clang-cpp /usr/bin/clang-cpp-${LLVM}
-
+ENV CC=clang-${LLVM}
+ENV CXX=clang++-${LLVM}
+ENV FCFLAGS="-ggdb3 -march=broadwell"
+ENV CFLAGS="-ggdb3 -march=broadwell"
+ENV CXXFLAGS="-stdlib=libc++ -ggdb3 -march=broadwell"
 ENV OMP_NUM_THREADS=1
 ENV MKL_NUM_THREADS=1
-ENV MKL_INTERFACE_LAYER=GNU,LP64
-ENV MKL_THREADING_LAYER=SEQUENTIAL
-ARG NCORES=10
+ARG NCORES=12
 
 # create source dirs
 RUN cd / && mkdir -p triqs && mkdir -p source
@@ -117,17 +87,14 @@ RUN cd / && mkdir -p triqs && mkdir -p source
 RUN cd /source && git clone -b develop --depth 1 https://github.com/wannier-developers/wannier90.git wannier90 \
     && cd wannier90 \
     # Using gfortran compiler 
-    && echo "F90 = mpif90 \n COMMS  = mpi \n MPIF90 = mpif90 \n FCOPTS = -O3 -fallow-argument-mismatch \n LIBS = -Wl,--no-as-needed -lmkl_gf_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl \n" > make.inc \
+    && echo "F90 = mpif90 \n COMMS  = mpi \n MPIF90 = mpif90 \n FCOPTS = -O3 \n LIBS = -Wl,--no-as-needed -lmkl_gf_lp64 -lmkl_sequential -lmkl_core -lpthread -lm -ldl \n" > make.inc \
     && cd /source/wannier90 \
-    && make PREFIX=/triqs wannier lib post w90chk2chk \
-    && make PREFIX=/triqs install \
-    && mkdir /triqs/include \
-    && cp src/obj/* /triqs/include/
+    && make default lib \
+    && make install
 
 # install qe
-RUN cd /source && wget --quiet https://gitlab.com/QEF/q-e/-/archive/qe-7.2/q-e-qe-7.2.tar.gz \
-   && tar -xf q-e-qe-7.2.tar.gz \
-   && cd q-e-qe-7.2 \
+RUN cd /source && git clone -b qe-7.2 --depth 1 https://gitlab.com/QEF/q-e.git q-e \
+   && cd q-e \
    && mkdir -p build && cd build \
    && cmake -D CMAKE_C_COMPILER=mpicc -D CMAKE_Fortran_COMPILER=mpif90 \
         -D CMAKE_VERBOSE_MAKEFILE=ON \
@@ -135,83 +102,87 @@ RUN cd /source && wget --quiet https://gitlab.com/QEF/q-e/-/archive/qe-7.2/q-e-q
         -D QE_ENABLE_HDF5=ON \
         -D QE_FFTW_VENDOR=FFTW3 \
         -D QE_ENABLE_SCALAPACK=OFF \
-        -D QE_ENABLE_OPENMP=ON \
-        -D QE_WANNIER90_INTERNAL=OFF \
-        -D WANNIER90_ROOT=/triqs \
         ../ \
     && make -j$NCORES all \ 
     && make install
 
 # VASP for CSC calculations
-#ADD csc_vasp.tar.gz /vasp/
-#COPY openmpi_vasp.makefile /vasp/makefile.include
+COPY csc_vasp.tar.gz /
+RUN tar xzvf csc_vasp.tar.gz --no-same-owner --xform='s/vasp\.6\.4\.1/vasp/g' && rm csc_vasp.tar.gz
+COPY openmpi_vasp.makefile /vasp/makefile.include
 
 # patch for Vasp CSC
-#COPY vasp_diffs /vasp/vasp_diffs
-#RUN cd /vasp/src \
-    #&& for name in electron.F fileio.F locproj.F mlwf.F .objects; \
-       #do patch $name -p1 -i ../vasp_diffs/$name; done
+COPY vasp_diffs /vasp/vasp_diffs
+RUN cd /vasp/src \
+    && for name in electron.F fileio.F locproj.F mlwf.F .objects; \
+       do patch $name -p1 -i ../vasp_diffs/$name; done
 
-#RUN  cd /vasp/ \
-     #&& make std \
-     #&& rm -rf src/ build/ arch/
+RUN  cd /vasp/ \
+     && make std \
+     && rm -rf src/ build/ arch/
 
-#ENV PATH=/vasp/bin:${PATH}
+ENV PATH=/vasp/bin:${PATH}
 
 # triqs
-ENV CPATH=/triqs/include:${CPATH} \
+ENV CPATH=/triqs/include:/usr/include/mkl:${CPATH} \
     PATH=/triqs/bin:${PATH} \
     LIBRARY_PATH=/triqs/lib:${LIBRARY_PATH} \
     LD_LIBRARY_PATH=/triqs/lib:${LD_LIBRARY_PATH} \
-    PYTHONPATH=/triqs/lib/python3.10/site-packages:${PYTHONPATH} \
+    PYTHONPATH=/triqs/lib/python3.8/site-packages:${PYTHONPATH} \
     CMAKE_PREFIX_PATH=/triqs/share/cmake:${CMAKE_PREFIX_PATH} \
-    TRIQS_ROOT=/triqs
+    TRIQS_ROOT=/triqs \
+    CTEST_OUTPUT_ON_FAILURE=1 \
+    OMPI_ALLOW_RUN_AS_ROOT=1 \
+    OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1 \
+    OMPI_MCA_rmaps_base_oversubscribe=yes
 
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/triqs triqs.src \
+COPY 0001-fix-BLAS-batch-strided-needs-sufficiently-new-MKL.patch /
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/triqs triqs.src \
     && mkdir -p triqs.build && cd triqs.build \
-    && cmake ../triqs.src -DCMAKE_INSTALL_PREFIX=/triqs -DMPIEXEC_PREFLAGS='--allow-run-as-root' -DBLA_VENDOR=Intel10_64_dyn \
-    && make -j$NCORES && ctest -j$NCORES && make install
+    && cmake ../triqs.src -DCMAKE_INSTALL_PREFIX=/triqs -DBLAS_LIBRARIES='/usr/lib/x86_64-linux-gnu/libmkl_rt.so;-lpthread;-lm;-ldl' \
+    && patch ./deps/nda_src/c++/nda/blas/interface/cxx_interface.cpp /0001-fix-BLAS-batch-strided-needs-sufficiently-new-MKL.patch \
+    && make -j$NCORES VERBOSE=1 && ctest -j$NCORES && make install
 
 # dft_tools
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/dft_tools.git dft_tools.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/dft_tools.git dft_tools.src \
     && mkdir -p dft_tools.build && cd dft_tools.build \
-    && cmake ../dft_tools.src -DMPIEXEC_PREFLAGS='--allow-run-as-root' \
-    && make -j$NCORES && ctest -j$NCORES && make install
+    && cmake ../dft_tools.src \
+    && make -j$NCORES && make test && make install
 
 # cthyb
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/cthyb.git cthyb.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/cthyb.git cthyb.src \
     && mkdir -p cthyb.build && cd cthyb.build \
-    && cmake ../cthyb.src -DMPIEXEC_PREFLAGS='--allow-run-as-root'  \
+    && cmake ../cthyb.src  \
     && make -j$NCORES && ctest -j$NCORES && make install
 
 # maxent
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/maxent.git maxent.src \
+RUN cd /source && git clone -b 1.2.x --depth 1 https://github.com/TRIQS/maxent.git maxent.src \
     && mkdir -p maxent.build && cd maxent.build \
     && cmake ../maxent.src \
     && make -j$NCORES && ctest -j$NCORES && make install
 
 # TPRF
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/tprf.git tprf.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/tprf.git tprf.src \
     && mkdir -p tprf.build && cd tprf.build \
-    && cmake ../tprf.src -DMPIEXEC_PREFLAGS='--allow-run-as-root'  \
+    && cmake ../tprf.src  \
     && make -j$NCORES && make test && make install
 
 # hubbardI
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/hubbardI.git hubbardI.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/hubbardI.git hubbardI.src \
     && mkdir -p hubbardI.build && cd hubbardI.build \
     && cmake ../hubbardI.src \ 
     && make -j$NCORES && ctest -j$NCORES && make install
 
 # hartree_fock
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/TRIQS/hartree_fock.git hartree_fock.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/hartree_fock.git hartree_fock.src \
     && mkdir -p hartree_fock.build && cd hartree_fock.build \
     && cmake ../hartree_fock.src \
     && make -j$NCORES && ctest -j$NCORES && make install
 
 # download solid_dmft and install
-RUN cd /source && git clone -b unstable --depth 1 https://github.com/flatironinstitute/solid_dmft.git solid_dmft.src \
+RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/flatironinstitute/solid_dmft.git solid_dmft.src \
     && mkdir -p solid_dmft.build && cd solid_dmft.build \
-    && cmake ../solid_dmft.src -DMPIEXEC_PREFLAGS='--allow-run-as-root' \
+    && cmake ../solid_dmft.src \
     && make test && make install
 
 # remove source

@@ -1,0 +1,279 @@
+From 629b7c2546a97aafb43dd7b8c3357e1ac2eefa42 Mon Sep 17 00:00:00 2001
+From: Henri Menke <henri@henrimenke.de>
+Date: Wed, 8 Nov 2023 20:12:42 +0100
+Subject: [PATCH 1/2] Allow mathematical expression to be passed for
+ random_seed (#61)
+
+* Allow mathematical expression to be passed for random_seed
+
+---------
+
+Co-authored-by: Alexander Hampel <ahampel@flatironinstitute.org>
+---
+ python/solid_dmft/dmft_cycle.py          |  2 +-
+ python/solid_dmft/dmft_tools/matheval.py | 56 ++++++++++++++++++++++++
+ python/solid_dmft/dmft_tools/solver.py   | 24 +++++++---
+ python/solid_dmft/read_config.py         |  7 ++-
+ test/python/CMakeLists.txt               |  1 +
+ test/python/test_matheval.py             | 39 +++++++++++++++++
+ 6 files changed, 119 insertions(+), 10 deletions(-)
+ create mode 100644 python/solid_dmft/dmft_tools/matheval.py
+ create mode 100644 test/python/test_matheval.py
+
+diff --git a/python/solid_dmft/dmft_cycle.py b/python/solid_dmft/dmft_cycle.py
+index 7a8ccdc7..f8c11ad0 100755
+--- a/python/solid_dmft/dmft_cycle.py
++++ b/python/solid_dmft/dmft_cycle.py
+@@ -660,7 +660,7 @@ def _dmft_step(sum_k, solvers, it, general_params,
+             mpi.report('\nSolving the impurity problem for shell {} ...'.format(icrsh))
+             mpi.barrier()
+             start_time = timer()
+-            solvers[icrsh].solve()
++            solvers[icrsh].solve(it=it)
+             mpi.barrier()
+             mpi.report('Actual time for solver: {:.2f} s'.format(timer() - start_time))
+ 
+diff --git a/python/solid_dmft/dmft_tools/matheval.py b/python/solid_dmft/dmft_tools/matheval.py
+new file mode 100644
+index 00000000..47ea6267
+--- /dev/null
++++ b/python/solid_dmft/dmft_tools/matheval.py
+@@ -0,0 +1,56 @@
++# https://stackoverflow.com/a/30516254
++
++import ast
++import math
++
++
++class MathExpr(object):
++    allowed_nodes = (
++        ast.Module,
++        ast.Expr,
++        ast.Load,
++        ast.Expression,
++        ast.Add,
++        ast.Sub,
++        ast.UnaryOp,
++        ast.Num,
++        ast.BinOp,
++        ast.Mult,
++        ast.Div,
++        ast.Pow,
++        ast.BitOr,
++        ast.BitAnd,
++        ast.BitXor,
++        ast.USub,
++        ast.UAdd,
++        ast.FloorDiv,
++        ast.Mod,
++        ast.LShift,
++        ast.RShift,
++        ast.Invert,
++        ast.Call,
++        ast.Name,
++    )
++
++    functions = {
++        "abs": abs,
++        "complex": complex,
++        "min": min,
++        "max": max,
++        "pow": pow,
++        "round": round,
++    } | {key: value for (key, value) in vars(math).items() if not key.startswith("_")}
++
++    def __init__(self, expr):
++        if any(elem in expr for elem in "\n#"):
++            raise ValueError(expr)
++
++        node = ast.parse(expr.strip(), mode="eval")
++        for curr in ast.walk(node):
++            if not isinstance(curr, self.allowed_nodes):
++                raise ValueError(curr)
++
++        self.code = compile(node, "<string>", "eval")
++
++    def __call__(self, **kwargs):
++        return eval(self.code, {"__builtins__": None}, self.functions | kwargs)
+diff --git a/python/solid_dmft/dmft_tools/solver.py b/python/solid_dmft/dmft_tools/solver.py
+index 2cf272d2..eee44c48 100755
+--- a/python/solid_dmft/dmft_tools/solver.py
++++ b/python/solid_dmft/dmft_tools/solver.py
+@@ -32,6 +32,7 @@ import triqs.utility.mpi as mpi
+ from h5 import HDFArchive
+ 
+ from . import legendre_filter
++from .matheval import MathExpr
+ 
+ def get_n_orbitals(sum_k):
+     """
+@@ -108,7 +109,7 @@ class SolverStructure:
+ 
+     Methods
+     -------
+-    solve(self)
++    solve(self, **kwargs)
+         solve impurity problem
+     '''
+ 
+@@ -140,6 +141,10 @@ class SolverStructure:
+         self.h_int = h_int
+         self.iteration_offset = iteration_offset
+         self.solver_struct_ftps = solver_struct_ftps
++        if solver_params.get("random_seed") is None:
++            self.random_seed_generator = None
++        else:
++            self.random_seed_generator = MathExpr(solver_params["random_seed"])
+ 
+         # initialize solver object, options are cthyb
+         if self.general_params['solver_type'] == 'cthyb':
+@@ -336,11 +341,16 @@ class SolverStructure:
+     # solver-specific solve() command
+     # ********************************************************************
+ 
+-    def solve(self):
++    def solve(self, **kwargs):
+         r'''
+         solve impurity problem with current solver
+         '''
+ 
++        if self.random_seed_generator is None:
++            random_seed = {}
++        else:
++            random_seed = { "random_seed": int(self.random_seed_generator(it=kwargs["it"], rank=mpi.rank)) }
++
+         if self.general_params['solver_type'] == 'cthyb':
+ 
+             if self.general_params['cthyb_delta_interface']:
+@@ -387,7 +397,7 @@ class SolverStructure:
+ 
+             # Solve the impurity problem for icrsh shell
+             # *************************************
+-            self.triqs_solver.solve(h_int=self.h_int, **self.solver_params)
++            self.triqs_solver.solve(h_int=self.h_int, **(self.solver_params | random_seed ))
+             # *************************************
+ 
+             # call postprocessing
+@@ -403,7 +413,7 @@ class SolverStructure:
+ 
+             # Solve the impurity problem for icrsh shell
+             # *************************************
+-            self.triqs_solver.solve(h_int=self.h_int, **self.solver_params)
++            self.triqs_solver.solve(h_int=self.h_int, **(self.solver_params | random_seed ))
+             # *************************************
+ 
+             # call postprocessing
+@@ -577,7 +587,7 @@ class SolverStructure:
+ 
+             # Solve the impurity problem for icrsh shell
+             # *************************************
+-            self.triqs_solver.solve(h_int=self.h_int, **self.solver_params)
++            self.triqs_solver.solve(h_int=self.h_int, **(self.solver_params | random_seed ))
+             # *************************************
+ 
+             # call postprocessing
+@@ -594,7 +604,7 @@ class SolverStructure:
+ 
+             # Solve the impurity problem for icrsh shell
+             # *************************************
+-            self.triqs_solver.solve(h_int=self.h_int, **self.solver_params)
++            self.triqs_solver.solve(h_int=self.h_int, **(self.solver_params | random_seed ))
+             # *************************************
+ 
+             # call postprocessing
+@@ -701,7 +711,7 @@ class SolverStructure:
+                                       )
+ 
+         def _interface_hartree_dc(hartree_instance, general_params, advanced_params, icrsh):
+-            """ Modifies in-place class attributes to infercace with options in solid_dmft 
++            """ Modifies in-place class attributes to infercace with options in solid_dmft
+                 for the moment supports only DC-relevant parameters
+ 
+             Parameters
+diff --git a/python/solid_dmft/read_config.py b/python/solid_dmft/read_config.py
+index e29a8937..af6f4304 100755
+--- a/python/solid_dmft/read_config.py
++++ b/python/solid_dmft/read_config.py
+@@ -281,9 +281,12 @@ fit_min_w : float, optional
+             start matsubara frequency to start with
+ fit_max_w : float, optional
+             highest matsubara frequency to fit
+-random_seed : int, optional default by triqs
++random_seed : str, optional default by triqs
+             if specified the int will be used for random seeds! Careful, this will give the same random
+             numbers on all mpi ranks
++            You can also pass a string that will convert the keywords it or rank on runtime, e.g.
++            34788 * it + 928374 * rank will convert each iteration the variables it and rank for the random
++            seed
+ legendre_fit : bool, optional default= False
+             filter noise of G(tau) with G_l, cutoff is taken from n_l
+ loc_n_min : int, optional
+@@ -733,7 +736,7 @@ PROPERTIES_PARAMS = {'general': {'seedname': {'used': True},
+                                 'move_shift': {'converter': BOOL_PARSER, 'default': False,
+                                                 'used': lambda params: params['general']['solver_type'] in ['cthyb']},
+ 
+-                                'random_seed': {'converter': int, 'default': None,
++                                'random_seed': {'converter': str, 'default': None,
+                                                 'used': lambda params: params['general']['solver_type'] in ['cthyb', 'ctint', 'ctseg']},
+ 
+                                 'perform_tail_fit': {'converter': BOOL_PARSER,
+diff --git a/test/python/CMakeLists.txt b/test/python/CMakeLists.txt
+index a6804be7..6b06542f 100644
+--- a/test/python/CMakeLists.txt
++++ b/test/python/CMakeLists.txt
+@@ -25,6 +25,7 @@ endforeach()
+ # all other tests
+ set(all_tests 
+     test_convergence
++    test_matheval
+     test_plot_correlated_bands
+     test_respack_sfo
+     )
+diff --git a/test/python/test_matheval.py b/test/python/test_matheval.py
+new file mode 100644
+index 00000000..332391cd
+--- /dev/null
++++ b/test/python/test_matheval.py
+@@ -0,0 +1,39 @@
++# Copyright (c) 2018-2022 Simons Foundation
++#
++# This program is free software: you can redistribute it and/or modify
++# it under the terms of the GNU General Public License as published by
++# the Free Software Foundation, either version 3 of the License, or
++# (at your option) any later version.
++#
++# This program is distributed in the hope that it will be useful,
++# but WITHOUT ANY WARRANTY; without even the implied warranty of
++# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++# GNU General Public License for more details.
++#
++# You may obtain a copy of the License at
++#     https:#www.gnu.org/licenses/gpl-3.0.txt
++#
++# Authors: Alexander Hampel
++
++from solid_dmft.dmft_tools.matheval import MathExpr
++import unittest
++
++
++class test_mathexpr(unittest.TestCase):
++    def test_simple(self):
++        expr = MathExpr("1 + 1")
++        result = expr()
++        self.assertEqual(result, 2)
++
++    def test_variables(self):
++        expr = MathExpr("34788 * it + 928374 * rank")
++        result = expr(it=5, rank=9)
++        self.assertEqual(result, 34788 * 5 + 928374 * 9)
++
++    def test_breakout(self):
++        with self.assertRaises(ValueError):
++            expr = MathExpr("(1).__class__")
++
++
++if __name__ == "__main__":
++    unittest.main()
+-- 
+2.40.1
+

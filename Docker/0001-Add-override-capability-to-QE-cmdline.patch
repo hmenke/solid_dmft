@@ -1,0 +1,40 @@
+From 8a644ba8c047223536da98fc6eb9739def83f7d3 Mon Sep 17 00:00:00 2001
+From: Henri Menke <henri@henrimenke.de>
+Date: Thu, 12 Oct 2023 10:11:47 +0200
+Subject: [PATCH] Add override capability to QE cmdline
+
+---
+ python/solid_dmft/dft_managers/qe_manager.py | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/python/solid_dmft/dft_managers/qe_manager.py b/python/solid_dmft/dft_managers/qe_manager.py
+index ebc883b..cf49b49 100644
+--- a/python/solid_dmft/dft_managers/qe_manager.py
++++ b/python/solid_dmft/dft_managers/qe_manager.py
+@@ -114,17 +114,17 @@ def run(number_cores, qe_file_ext, qe_exec, mpi_profile, seedname):
+         mpi_exe = mpi_helpers.find_path_to_mpi_command(env_vars, 'mpirun')
+ 
+         if qe_file_ext in ['scf', 'nscf', 'mod_scf', 'bnd']:
+-            qe_exec += f'pw.x -nk {number_cores}'
++            qe_exec += os.environ.get("OVERRIDE_pw", "pw.x -nk {number_cores}").format(number_cores=number_cores)
+         elif qe_file_ext in ['pw2wan']:
+-            qe_exec += 'pw2wannier90.x -nk 1 -pd .true.'
++            qe_exec += os.environ.get("OVERRIDE_pw2wan", "pw2wannier90.x -nk 1 -pd .true.").format(number_cores=number_cores)
+         elif qe_file_ext in ['bands']:
+-            qe_exec += f'bands.x -nk {number_cores}'
++            qe_exec += os.environ.get("OVERRIDE_bands", "bands.x -nk {number_cores}").format(number_cores=number_cores)
+         elif qe_file_ext in ['proj']:
+-            qe_exec += f'projwfc.x -nk {number_cores}'
++            qe_exec += os.environ.get("OVERRIDE_proj", "projwfc.x -nk {number_cores}").format(number_cores=number_cores)
+         elif qe_file_ext in ['win_pp']:
+-            qe_exec += 'wannier90.x -pp'
++            qe_exec += os.environ.get("OVERRIDE_win_pp", "wannier90.x -pp").format(number_cores=number_cores)
+         elif qe_file_ext in ['win']:
+-            qe_exec += 'wannier90.x'
++            qe_exec += os.environ.get("OVERRIDE_win", "wannier90.x").format(number_cores=number_cores)
+ 
+         arguments = mpi_helpers.get_mpi_arguments(mpi_profile, mpi_exe, number_cores, qe_exec, hostfile)
+         _start_with_piping(mpi_exe, arguments, qe_file_ext, env_vars, seedname)
+-- 
+2.25.1
+

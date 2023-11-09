@@ -180,7 +180,15 @@ RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/TRIQS/hartree_
     && make -j$NCORES && ctest -j$NCORES && make install
 
 # download solid_dmft and install
+COPY 0001-Add-override-capability-to-QE-cmdline.patch /
+COPY 0001-Allow-mathematical-expression-to-be-passed-for-rando.patch /
+COPY 0002-Restore-Python-3.8-compatibility-for-dictionary-merg.patch /
 RUN cd /source && git clone -b 3.2.x --depth 1 https://github.com/flatironinstitute/solid_dmft.git solid_dmft.src \
+    && (cd solid_dmft.src \
+        && git apply /0001-Add-override-capability-to-QE-cmdline.patch \
+        && git apply /0001-Allow-mathematical-expression-to-be-passed-for-rando.patch \
+        && git apply /0002-Restore-Python-3.8-compatibility-for-dictionary-merg.patch \
+       ) \
     && mkdir -p solid_dmft.build && cd solid_dmft.build \
     && cmake ../solid_dmft.src \
     && make test && make install

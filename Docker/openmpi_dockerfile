@@ -206,6 +206,9 @@ RUN `ln -s /usr/bin/python3 /usr/bin/python`
 # expose port for jupyter
 EXPOSE 8378
 
+COPY 0001-Include-process-ID-in-message-ID.patch /
+RUN patch -d /usr/lib/python3/dist-packages/jupyter_client -p1 < /0001-Include-process-ID-in-message-ID.patch
+
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY jupyter_start.sh /usr/local/bin/jupyter.sh
 

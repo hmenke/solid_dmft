@@ -1,0 +1,28 @@
+From 16612b3bb8ce44cd61bb60278afd794d35c7761f Mon Sep 17 00:00:00 2001
+From: Henri Menke <henri@henrimenke.de>
+Date: Fri, 27 Jan 2023 12:34:27 +0100
+Subject: [PATCH] Include process ID in message ID
+
+Ensures messages are unique after fork
+
+(cherry picked from commit https://github.com/jupyter/jupyter_client/pull/655/commits/9ac65f998ec1398a4dd206d8d18f3babf9947d7e)
+---
+ session.py | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/session.py b/session.py
+index 45d5f81..cbe8407 100644
+--- a/session.py
++++ b/session.py
+@@ -518,7 +518,7 @@ class Session(Configurable):
+     def msg_id(self):
+         message_number = self.message_count
+         self.message_count += 1
+-        return '{}_{}'.format(self.session, message_number)
++        return '{}_{}_{}'.format(self.session, os.getpid(), message_number)
+ 
+     def _check_packers(self):
+         """check packers for datetime support."""
+-- 
+2.25.1
+

@@ -16,6 +16,7 @@
 # Authors: Alexander Hampel
 
 from solid_dmft.dmft_tools.matheval import MathExpr
+import os
 import unittest
 
 
@@ -29,6 +30,11 @@ class test_mathexpr(unittest.TestCase):
         expr = MathExpr("34788 * it + 928374 * rank")
         result = expr(it=5, rank=9)
         self.assertEqual(result, 34788 * 5 + 928374 * 9)
+
+    def test_environ(self):
+        expr = MathExpr("it * TEST_MATHEVAL")
+        result = expr(**{ k: v for k, v in dict(os.environ).values() if v.isdecimal() }, it=5)
+        self.assertEqual(result, 5 * 1729)
 
     def test_breakout(self):
         with self.assertRaises(ValueError):

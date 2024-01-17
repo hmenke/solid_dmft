@@ -22,6 +22,7 @@
 #
 ################################################################################
 import numpy as np
+import os
 from itertools import product
 
 from triqs.gf import MeshImTime, MeshReTime, MeshReFreq, MeshLegendre, Gf, BlockGf, make_hermitian, Omega, iOmega_n, make_gf_from_fourier, fit_hermitian_tail
@@ -349,7 +350,21 @@ class SolverStructure:
         if self.random_seed_generator is None:
             random_seed = {}
         else:
-            random_seed = { "random_seed": int(self.random_seed_generator(it=kwargs["it"], rank=mpi.rank)) }
+            random_seed = {
+                "random_seed": int(
+                    self.random_seed_generator(
+                        **{
+                            **{
+                                k: v
+                                for k, v in dict(os.environ).items()
+                                if v.isdecimal()
+                            },
+                            "it": kwargs["it"],
+                            "rank": mpi.rank,
+                        }
+                    )
+                )
+            }
 
         if self.general_params['solver_type'] == 'cthyb':
 
